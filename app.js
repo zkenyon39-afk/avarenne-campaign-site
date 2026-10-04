@@ -11,7 +11,7 @@
   const defaults = {
     campaignKicker:"A TALE FROM THE BORDERLANDS",
     campaignTitle:"AVARENNE",
-    campaignSubtitle:"Where old roads end, old promises remain.",
+    campaignSubtitle:"Kingdom before brother, Glory above all",
     titleKickerFont:'"Cinzel", Georgia, serif',
     titleMainFont:'"Cinzel", Georgia, serif',
     titleSubFont:'"Cormorant Garamond", Georgia, serif',
@@ -20,21 +20,23 @@
     titleSubSize:30,
     titleSpacing:13,
 
-    preludeKicker:"ON THE ROAD TO BRIARWICK",
-    preludeTitle:"Before the Lanterns Are Lit",
+    preludeKicker:"Trouble is stirring",
+    preludeTitle:"War Looms in the North",
     preludeKickerFont:'"Cinzel", Georgia, serif',
     preludeTitleFont:'"Cormorant Garamond", Georgia, serif',
     preludeBodyFont:'"Cormorant Garamond", Georgia, serif',
     preludeKickerSize:12,
     preludeTitleSize:82,
-    preludeBodySize:31,
-    preludeBody:`The roads are fuller than they should be.
+    preludeBodySize:28,
+    preludeBody:`For generations, the kingdoms of Avarenne and Veyland have but tolerated each other's existance. It would seem their patience has reached its end.
 
-Farm carts, pilgrims, merchants, musicians — all of them moving toward the same little town.
+Rumor tells that the forces of the north march from Ravenholt, bound for the ancient battlefields of the Grey Marches, seeking once and for all the destruction of Highmere.
 
-And somewhere among them, something else is coming.`,
+As war looms over the kingdom, tensions rise. And while many dread the coming conflict, others see opportunity...
 
-    pressingKicker:"BRIARWICK · THE FIRST PRESSING",
+But in the lands to the south, trouble is far from thought.`,
+
+    pressingKicker:"On the road to Briarwick",
     pressingTitle:"The First Pressing",
     pressingBody:`Beyond the Woldwood, the orchards of Briarwick are heavy with fruit.
 
@@ -50,17 +52,17 @@ Not all of them have come to celebrate.`,
     pressingKickerSize:12,
     pressingTitleSize:82,
     pressingBodySize:31,
-    countdownLabelSize:11,
-    countdownNumberSize:48,
-    countdownLabel:"UNTIL THE FIRST PRESSING",
-    targetDate:future(),
+    countdownLabelSize:14,
+    countdownNumberSize:57,
+    countdownLabel:"The festival begins",
+    targetDate:"2026-10-18T19:00",
 
-    lineDelay:2.8,
+    lineDelay:5,
 
-    emberCount:90,
+    emberCount:190,
     smokeAmount:58,
     titleHold:5,
-    preludeHold:6,
+    preludeHold:10,
     currentScene:"title"
   };
 
@@ -385,7 +387,7 @@ Not all of them have come to celebrate.`,
 
   $("resetBtn").addEventListener("click",()=>{
     if(!confirm("Reset all campaign display text and settings?")) return;
-    s={...defaults,targetDate:future()};
+    s={...defaults};
     save();
     apply();
     buildBrand(true);
@@ -425,6 +427,7 @@ Not all of them have come to celebrate.`,
   }
   setInterval(updateCountdown,1000);
 
+  // Ember canvas
   const bg=$("background"),ctx=bg.getContext("2d");
   let particles=[],dpr=1;
 
@@ -491,6 +494,7 @@ Not all of them have come to celebrate.`,
     requestAnimationFrame(animate);
   }
 
+  // Smoke canvas
   const sc=$("smoke"),sctx=sc.getContext("2d");
   let smokePuffs=[];
 
