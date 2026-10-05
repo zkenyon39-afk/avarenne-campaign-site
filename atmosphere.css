@@ -1,14 +1,13 @@
 /* Shared atmosphere tuning for the public display and private admin preview. */
 
-/* Let the ember field emerge from black instead of appearing all at once. */
-#background{
+/* Public display only: keep the ember canvas dark until JavaScript confirms the
+   first real canvas frame has been painted, then ease the entire field in. */
+body.ember-fade #background{
   opacity:0;
-  animation:emberFieldFadeIn 1.45s cubic-bezier(.22,.61,.36,1) .08s forwards;
+  transition:opacity 1.45s cubic-bezier(.22,.61,.36,1);
 }
-
-@keyframes emberFieldFadeIn{
-  from{opacity:0}
-  to{opacity:1}
+body.ember-fade #background.atmosphere-ready{
+  opacity:1;
 }
 
 /* The smoke canvas was intentionally very low-alpha; lift its warm ash tones
@@ -19,5 +18,5 @@
 }
 
 @media (prefers-reduced-motion:reduce){
-  #background{animation-duration:.01ms;animation-delay:0s}
+  body.ember-fade #background{transition-duration:.01ms}
 }
