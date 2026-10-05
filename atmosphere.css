@@ -1,0 +1,23 @@
+/* Shared atmosphere tuning for the public display and private admin preview. */
+
+/* Let the ember field emerge from black instead of appearing all at once. */
+#background{
+  opacity:0;
+  animation:emberFieldFadeIn 1.45s cubic-bezier(.22,.61,.36,1) .08s forwards;
+}
+
+@keyframes emberFieldFadeIn{
+  from{opacity:0}
+  to{opacity:1}
+}
+
+/* The smoke canvas was intentionally very low-alpha; lift its warm ash tones
+   enough to register against the nearly black background without reading as fog. */
+#smoke{
+  filter:brightness(2.05) saturate(.78) sepia(.14);
+  mix-blend-mode:screen;
+}
+
+@media (prefers-reduced-motion:reduce){
+  #background{animation-duration:.01ms;animation-delay:0s}
+}
