@@ -1,23 +1,38 @@
 /* Shared atmosphere tuning for the public display and private admin preview. */
 
-/* The ember canvas stays fully hidden until ember-fade.js confirms that a real
-   canvas frame has been painted. Only then do we transition it into view. */
+/* Keep the ember field completely out of the title card. It is already rendering
+   behind the scenes, then fades in only once the prelude/second slide begins. */
 body.ember-fade #background{
   opacity:0;
   transition:opacity 1.45s cubic-bezier(.22,.61,.36,1);
 }
-body.ember-fade.embers-painted #background{
+body.ember-fade.embers-visible #background{
   opacity:1;
 }
 
-/* Give the prelude heading/title a dramatic beat before the exposition begins.
-   Each paragraph keeps its existing stagger; its own fade simply waits 2.25s. */
-#scene-prelude .teaser-line{
+/* Give both narrative slides a dramatic beat for their heading/title before the
+   exposition begins. Existing paragraph staggering is preserved. */
+#scene-prelude .teaser-line,
+#scene-firstpressing .teaser-line{
   transition-delay:2.25s;
 }
 
-/* The smoke canvas was intentionally very low-alpha; lift its warm ash tones
-   enough to register against the nearly black background without reading as fog. */
+/* The countdown is the final reveal on the First Pressing slide. JS adds the
+   visible class only after the last paragraph has completed its entrance. */
+#scene-firstpressing .countdown-box{
+  opacity:0;
+  transform:translateY(8px);
+  filter:blur(3px);
+  transition:opacity 1.65s ease,transform 1.65s ease,filter 1.65s ease;
+}
+#scene-firstpressing .countdown-box.countdown-visible{
+  opacity:1;
+  transform:none;
+  filter:blur(0);
+}
+
+/* Lift the warm ash smoke enough to register against black without turning it
+   into an obvious fog-machine effect. */
 #smoke{
   filter:brightness(2.05) saturate(.78) sepia(.14);
   mix-blend-mode:screen;
@@ -25,5 +40,7 @@ body.ember-fade.embers-painted #background{
 
 @media (prefers-reduced-motion:reduce){
   body.ember-fade #background{transition-duration:.01ms}
-  #scene-prelude .teaser-line{transition-delay:0s}
+  #scene-prelude .teaser-line,
+  #scene-firstpressing .teaser-line{transition-delay:0s}
+  #scene-firstpressing .countdown-box{transition-duration:.01ms}
 }
