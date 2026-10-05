@@ -37,6 +37,8 @@
   "countdownLabel": "The festival begins",
   "targetDate": "2026-10-18T19:00",
   "lineDelay": 5,
+  "preludeLineDelay": 5,
+  "pressingLineDelay": 3.5,
   "emberCount": 190,
   "smokeAmount": 58,
   "titleHold": 5,
@@ -64,7 +66,8 @@
   function buildParagraphReveal(holderId,text,reveal=true){
     revealTimers.forEach(clearTimeout);revealTimers=[];const holder=$(holderId);holder.innerHTML='';
     const paras=text.split(/\n\s*\n/).map(x=>x.trim()).filter(Boolean);
-    paras.forEach((txt,i)=>{const div=document.createElement('div');div.className='teaser-line';div.textContent=txt;div.style.marginTop=i?'1.05em':'0';holder.appendChild(div);if(reveal)revealTimers.push(setTimeout(()=>div.classList.add('visible'),350+i*s.lineDelay*1000));else div.classList.add('visible')});
+    const delay=Number(holderId==='pressingLines'?s.pressingLineDelay:s.preludeLineDelay)||Number(s.lineDelay)||5;
+    paras.forEach((txt,i)=>{const div=document.createElement('div');div.className='teaser-line';div.textContent=txt;div.style.marginTop=i?'1.05em':'0';holder.appendChild(div);if(reveal)revealTimers.push(setTimeout(()=>div.classList.add('visible'),350+i*delay*1000));else div.classList.add('visible')});
   }
   function apply(){
     $('campaignKickerDisplay').textContent=s.campaignKicker;$('campaignSubtitleDisplay').textContent=s.campaignSubtitle;
@@ -80,8 +83,8 @@
   const sceneOrder=['title','prelude','firstpressing'];
   function showScene(name,replay=true){qsa('.scene').forEach(x=>x.classList.toggle('active',x.id==='scene-'+name));if(name==='title'&&replay)buildBrand(true);if(name==='prelude')buildParagraphReveal('preludeLines',s.preludeBody,replay);if(name==='firstpressing')buildParagraphReveal('pressingLines',s.pressingBody,replay)}
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-  function revealDuration(text){const count=Math.max(1,text.split(/\n\s*\n/).filter(x=>x.trim()).length);return 350+(count-1)*s.lineDelay*1000+1500}
-  async function runOpening(){const token=++sequenceToken;$('brandReveal').style.opacity='';showScene('title',true);await sleep(s.titleHold*1000);if(token!==sequenceToken)return;showScene('prelude',true);await sleep(revealDuration(s.preludeBody)+s.preludeHold*1000);if(token!==sequenceToken)return;showScene('firstpressing',true)}
+  function revealDuration(text,delay){const count=Math.max(1,text.split(/\n\s*\n/).filter(x=>x.trim()).length);return 350+(count-1)*(Number(delay)||Number(s.lineDelay)||5)*1000+1500}
+  async function runOpening(){const token=++sequenceToken;$('brandReveal').style.opacity='';showScene('title',true);await sleep(s.titleHold*1000);if(token!==sequenceToken)return;showScene('prelude',true);await sleep(revealDuration(s.preludeBody,s.preludeLineDelay)+s.preludeHold*1000);if(token!==sequenceToken)return;showScene('firstpressing',true)}
   function updateCountdown(){let diff=targetDate-Date.now();if(!Number.isFinite(diff)){$('countdown').innerHTML='SET A DATE';return}if(diff<=0){$('countdown').innerHTML='THE HOUR HAS COME';return}const d=Math.floor(diff/86400000);diff%=86400000;const h=Math.floor(diff/3600000);diff%=3600000;const m=Math.floor(diff/60000);const sec=Math.floor((diff%60000)/1000);const pad=n=>String(n).padStart(2,'0');$('countdown').innerHTML=`${pad(d)}<small>D</small> ${pad(h)}<small>H</small> ${pad(m)}<small>M</small> ${pad(sec)}<small>S</small>`}
   setInterval(updateCountdown,1000);
 
