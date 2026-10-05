@@ -1,39 +1,68 @@
 (() => {
-  const canvas = document.getElementById('background');
-  if (!canvas) return;
+  const body = document.body;
+  const title = document.getElementById('scene-title');
+  const prelude = document.getElementById('scene-prelude');
+  const pressing = document.getElementById('scene-firstpressing');
+  const pressingLines = document.getElementById('pressingLines');
+  const countdownBox = document.querySelector('#scene-firstpressing .countdown-box');
+  if (!body || !title || !prelude || !pressing) return;
 
-  const ctx = canvas.getContext('2d');
-  const startedAt = performance.now();
+  let countdownTimer = null;
 
-  function revealWhenPainted() {
-    if (canvas.classList.contains('atmosphere-ready')) return;
+  function syncEmbers(){
+    const shouldShow = prelude.classList.contains('active') || pressing.classList.contains('active');
+    body.classList.toggle('embers-visible', shouldShow);
+  }
 
-    if (canvas.width > 0 && canvas.height > 0) {
-      try {
-        const x = Math.floor(canvas.width * 0.5);
-        const y = Math.floor(canvas.height * 0.85);
-        const alpha = ctx.getImageData(x, y, 1, 1).data[3];
+  function resetCountdown(){
+    if (countdownTimer) clearTimeout(countdownTimer);
+    countdownTimer = null;
+    if (countdownBox) countdownBox.classList.remove('countdown-visible');
+  }
 
-        if (alpha > 0) {
-          /* One extra frame guarantees the browser has committed opacity:0
-             before we transition to the visible state. */
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => canvas.classList.add('atmosphere-ready'));
-          });
-          return;
-        }
-      } catch (_) {}
-    }
-
-    /* Safety valve: never leave the atmosphere permanently hidden if a browser
-       blocks pixel inspection for an unexpected reason. */
-    if (performance.now() - startedAt > 12000) {
-      canvas.classList.add('atmosphere-ready');
+  function scheduleCountdownIfReady(){
+    if (!countdownBox || !pressingLines || !pressing.classList.contains('active')) return;
+    const lines = [...pressingLines.querySelectorAll('.teaser-line')];
+    if (!lines.length){
+      resetCountdown();
+      countdownTimer = setTimeout(() => {
+        if (pressing.classList.contains('active')) countdownBox.classList.add('countdown-visible');
+      }, 2500);
       return;
     }
 
-    requestAnimationFrame(revealWhenPainted);
+    const last = lines[lines.length - 1];
+    if (!last.classList.contains('visible')) return;
+
+    if (countdownTimer) clearTimeout(countdownTimer);
+    /* The line receives .visible before its 2.25s CSS transition delay begins.
+       4.25s lets that delay + 1.4s fade finish, then gives it a small breath. */
+    countdownTimer = setTimeout(() => {
+      if (pressing.classList.contains('active') && last.classList.contains('visible')) {
+        countdownBox.classList.add('countdown-visible');
+      }
+    }, 4250);
   }
 
-  requestAnimationFrame(revealWhenPainted);
+  const sceneObserver = new MutationObserver(() => {
+    syncEmbers();
+    if (!pressing.classList.contains('active')) resetCountdown();
+    else {
+      resetCountdown();
+      scheduleCountdownIfReady();
+    }
+  });
+  [title, prelude, pressing].forEach(el => sceneObserver.observe(el, {attributes:true, attributeFilter:['class']}));
+
+  if (pressingLines) {
+    const lineObserver = new MutationObserver(mutations => {
+      if (mutations.some(m => m.type === 'childList')) resetCountdown();
+      scheduleCountdownIfReady();
+    });
+    lineObserver.observe(pressingLines, {childList:true, subtree:true, attributes:true, attributeFilter:['class']});
+  }
+
+  syncEmbers();
+  resetCountdown();
+  scheduleCountdownIfReady();
 })();
