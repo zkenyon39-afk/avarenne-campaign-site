@@ -1,10 +1,11 @@
 /* Shared atmosphere tuning for the public display and private admin preview. */
 
 /* Keep the ember field completely out of the title card. It is already rendering
-   behind the scenes, then fades in only once the prelude/second slide begins. */
+   behind the scenes; JS waits 800ms into the prelude before revealing it, and
+   this slower fade lets the atmosphere emerge instead of feeling like a cut. */
 body.ember-fade #background{
   opacity:0;
-  transition:opacity 1.45s cubic-bezier(.22,.61,.36,1);
+  transition:opacity 2.2s cubic-bezier(.22,.61,.36,1);
 }
 body.ember-fade.embers-visible #background{
   opacity:1;
