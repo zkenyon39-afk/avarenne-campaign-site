@@ -7,11 +7,29 @@
   const countdownBox = document.querySelector('#scene-firstpressing .countdown-box');
   if (!body || !title || !prelude || !pressing) return;
 
+  let emberTimer = null;
   let countdownTimer = null;
 
   function syncEmbers(){
-    const shouldShow = prelude.classList.contains('active') || pressing.classList.contains('active');
-    body.classList.toggle('embers-visible', shouldShow);
+    if (emberTimer) clearTimeout(emberTimer);
+    emberTimer = null;
+
+    if (pressing.classList.contains('active')) {
+      body.classList.add('embers-visible');
+      return;
+    }
+
+    if (prelude.classList.contains('active')) {
+      body.classList.remove('embers-visible');
+      emberTimer = setTimeout(() => {
+        if (prelude.classList.contains('active')) {
+          body.classList.add('embers-visible');
+        }
+      }, 800);
+      return;
+    }
+
+    body.classList.remove('embers-visible');
   }
 
   function resetCountdown(){
@@ -27,7 +45,7 @@
       resetCountdown();
       countdownTimer = setTimeout(() => {
         if (pressing.classList.contains('active')) countdownBox.classList.add('countdown-visible');
-      }, 2500);
+      }, 3500);
       return;
     }
 
@@ -36,12 +54,13 @@
 
     if (countdownTimer) clearTimeout(countdownTimer);
     /* The line receives .visible before its 2.25s CSS transition delay begins.
-       4.25s lets that delay + 1.4s fade finish, then gives it a small breath. */
+       5.25s lets that delay + 1.4s fade finish, then leaves about 1.6s of quiet
+       before the countdown becomes the final reveal. */
     countdownTimer = setTimeout(() => {
       if (pressing.classList.contains('active') && last.classList.contains('visible')) {
         countdownBox.classList.add('countdown-visible');
       }
-    }, 4250);
+    }, 5250);
   }
 
   const sceneObserver = new MutationObserver(() => {
