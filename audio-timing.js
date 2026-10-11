@@ -133,23 +133,30 @@
 
     const now = ctx.currentTime;
     const param = warGain.gain;
-    const current = Math.max(0.0001, param.value || WAR_VOLUME);
 
-    if (typeof param.cancelAndHoldAtTime === 'function') {
-      try { param.cancelAndHoldAtTime(now); } catch {
-        param.cancelScheduledValues(now);
-        param.setValueAtTime(current, now);
-      }
-    } else {
-      param.cancelScheduledValues(now);
-      param.setValueAtTime(current, now);
+    // The opening fade has long since completed by the time we reach this cue,
+    // so Crow should be sitting at WAR_VOLUME. Use an explicit equal-power-style
+    // curve instead of a linear automation ramp; this produces a much more
+    // natural audible tail and avoids Safari making the final stop feel clipped.
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(WAR_VOLUME, now);
+
+    const steps = 64;
+    const curve = new Float32Array(steps);
+    for (let i = 0; i < steps; i++) {
+      const x = i / (steps - 1);
+      curve[i] = WAR_VOLUME * Math.cos(x * Math.PI / 2);
     }
+    curve[steps - 1] = 0;
+    param.setValueCurveAtTime(curve, now, WAR_OUT_SEC);
 
-    param.linearRampToValueAtTime(0.0001, now + WAR_OUT_SEC);
     warExitEndsAt = now + WAR_OUT_SEC;
 
+    // Let the gain reach literal silence before disposing of the source. The
+    // extra tail is inaudible but prevents the scheduled stop from sounding
+    // like the music itself was cut off.
     if (warSource) {
-      try { warSource.stop(warExitEndsAt + 0.05); } catch {}
+      try { warSource.stop(warExitEndsAt + 0.25); } catch {}
     }
   }
 
