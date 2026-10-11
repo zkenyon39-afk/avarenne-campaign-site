@@ -6,12 +6,11 @@
 
   const WAR_VOLUME = 0.72;
   const FESTIVAL_VOLUME = 0.58;
-  const WAR_FADE_MS = 1200;
-  const CROSSFADE_MS = 1500;
+  const WAR_FADE_SEC = 1.2;
+  const CROSSFADE_SEC = 1.5;
 
-  // app.js still contains its original audio code. Replace only those legacy
-  // /api/audio objects with harmless dummies so there is exactly one system
-  // controlling the real music.
+  // app.js still creates its old /api/audio media objects. Make only those
+  // objects inert; the real soundtrack below is handled entirely by Web Audio.
   function isLegacyCampaignAudio(src = '') {
     const value = String(src);
     return value.includes('/api/audio') && (value.includes('track=crow') || value.includes('track=festival'));
@@ -47,104 +46,101 @@
   CampaignAudioShim.prototype = NativeAudio.prototype;
   window.Audio = CampaignAudioShim;
 
-  // Use real DOM media elements. They are started once by the explicit Enter
-  // click and then remain playing silently until their scene cue. No later
-  // play() call is required, so browser autoplay rules cannot block the handoff.
-  const war = document.createElement('audio');
-  const festival = document.createElement('audio');
-  war.id = 'avarenne-war-audio';
-  festival.id = 'avarenne-festival-audio';
-  war.src = WAR_SRC;
-  festival.src = FESTIVAL_SRC;
-  war.preload = 'auto';
-  festival.preload = 'auto';
-  festival.loop = true;
-  war.volume = 0;
-  festival.volume = 0;
-  war.muted = true;
-  festival.muted = true;
-  war.setAttribute('playsinline', '');
-  festival.setAttribute('playsinline', '');
-  war.style.display = 'none';
-  festival.style.display = 'none';
-  document.body.appendChild(war);
-  document.body.appendChild(festival);
-
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  let ctx = null;
   let armed = false;
+  let buffersPromise = null;
+  let warSource = null;
+  let festivalSource = null;
+  let warGain = null;
+  let festivalGain = null;
   let warStarted = false;
   let festivalStarted = false;
-  let fadeToken = 0;
 
   const preludeActive = () => document.getElementById('scene-prelude')?.classList.contains('active');
   const pressingActive = () => document.getElementById('scene-firstpressing')?.classList.contains('active');
 
-  function armRealAudio() {
+  async function fetchBuffer(url) {
+    const response = await fetch(url, { cache: 'force-cache', mode: 'cors' });
+    if (!response.ok) throw new Error(`Audio fetch failed: ${response.status}`);
+    const data = await response.arrayBuffer();
+    return await ctx.decodeAudioData(data.slice(0));
+  }
+
+  function loadBuffers() {
+    if (!buffersPromise) {
+      buffersPromise = Promise.all([
+        fetchBuffer(WAR_SRC),
+        fetchBuffer(FESTIVAL_SRC)
+      ]).then(([war, festival]) => ({ war, festival }));
+    }
+    return buffersPromise;
+  }
+
+  function makeSource(buffer, gainValue = 0) {
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buffer;
+    gain.gain.setValueAtTime(gainValue, ctx.currentTime);
+    source.connect(gain).connect(ctx.destination);
+    return { source, gain };
+  }
+
+  async function armAudio() {
     if (armed) return;
     armed = true;
-
-    try { war.currentTime = 0; } catch {}
-    try { festival.currentTime = 0; } catch {}
-    war.volume = 0;
-    festival.volume = 0;
-    war.muted = true;
-    festival.muted = true;
-
-    const wp = war.play();
-    if (wp?.catch) wp.catch(err => console.warn('War audio unlock failed.', err));
-    const fp = festival.play();
-    if (fp?.catch) fp.catch(err => console.warn('Festival audio unlock failed.', err));
+    ctx = new AudioContextCtor();
+    try { await ctx.resume(); } catch {}
+    loadBuffers().then(syncToScene).catch(err => console.warn('Campaign soundtrack failed to load.', err));
   }
 
-  function startWar() {
+  async function startWar() {
     if (!armed || warStarted || festivalStarted) return;
+    const { war } = await loadBuffers();
+    if (warStarted || festivalStarted || !preludeActive()) return;
     warStarted = true;
-    const token = ++fadeToken;
 
-    try { war.currentTime = 0; } catch {}
-    war.volume = 0;
-    war.muted = false;
+    const node = makeSource(war, 0);
+    warSource = node.source;
+    warGain = node.gain;
+    warSource.start(0, 0);
 
-    const started = performance.now();
-    const tick = now => {
-      if (token !== fadeToken || festivalStarted) return;
-      const x = Math.min(1, (now - started) / WAR_FADE_MS);
-      war.volume = WAR_VOLUME * x;
-      if (x < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+    const now = ctx.currentTime;
+    warGain.gain.cancelScheduledValues(now);
+    warGain.gain.setValueAtTime(0, now);
+    warGain.gain.linearRampToValueAtTime(WAR_VOLUME, now + WAR_FADE_SEC);
   }
 
-  function startFestivalTransition() {
+  async function startFestivalTransition() {
     if (!armed || festivalStarted) return;
+    const { festival } = await loadBuffers();
+    if (festivalStarted || !pressingActive()) return;
     festivalStarted = true;
-    const token = ++fadeToken;
-    const startingWarVolume = war.volume;
 
-    // Festival has already been playing muted since Enter. Rewind it while it
-    // is still running, then unmute at zero volume for the crossfade.
-    try { festival.currentTime = 0; } catch {}
-    festival.volume = 0;
-    festival.muted = false;
+    const node = makeSource(festival, 0);
+    festivalSource = node.source;
+    festivalGain = node.gain;
+    festivalSource.start(0, 0);
 
-    const started = performance.now();
-    const tick = now => {
-      if (token !== fadeToken) return;
-      const x = Math.min(1, (now - started) / CROSSFADE_MS);
-      war.volume = startingWarVolume * Math.cos(x * Math.PI / 2);
-      festival.volume = FESTIVAL_VOLUME * Math.sin(x * Math.PI / 2);
-      if (x < 1) {
-        requestAnimationFrame(tick);
-      } else {
-        war.volume = 0;
-        war.muted = true;
-        war.pause();
+    const now = ctx.currentTime;
+    festivalGain.gain.cancelScheduledValues(now);
+    festivalGain.gain.setValueAtTime(0, now);
+    festivalGain.gain.linearRampToValueAtTime(FESTIVAL_VOLUME, now + CROSSFADE_SEC);
+
+    if (warGain) {
+      const current = Math.max(0.0001, warGain.gain.value || WAR_VOLUME);
+      warGain.gain.cancelScheduledValues(now);
+      warGain.gain.setValueAtTime(current, now);
+      warGain.gain.linearRampToValueAtTime(0.0001, now + CROSSFADE_SEC);
+      if (warSource) {
+        try { warSource.stop(now + CROSSFADE_SEC + 0.05); } catch {}
       }
-    };
-    requestAnimationFrame(tick);
+    }
   }
 
   function syncToScene() {
-    if (!armed) return;
+    if (!armed || !ctx) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     if (pressingActive()) {
       startFestivalTransition();
     } else if (preludeActive()) {
@@ -152,11 +148,11 @@
     }
   }
 
-  // Capture the same user gesture used by the site's Enter button.
+  // The user's Enter click is the only gesture needed. It unlocks the
+  // AudioContext and begins loading both tracks before the War Looms scene.
   document.addEventListener('click', event => {
     if (!event.target.closest?.('.avarenne-entry-button')) return;
-    armRealAudio();
-    requestAnimationFrame(syncToScene);
+    armAudio();
   }, true);
 
   const observer = new MutationObserver(syncToScene);
@@ -164,4 +160,8 @@
   const pressingScene = document.getElementById('scene-firstpressing');
   if (preludeScene) observer.observe(preludeScene, { attributes: true, attributeFilter: ['class'] });
   if (pressingScene) observer.observe(pressingScene, { attributes: true, attributeFilter: ['class'] });
+
+  // A tiny fallback loop catches any scene change that lands between async
+  // decode completion and the MutationObserver callback.
+  setInterval(syncToScene, 250);
 })();
