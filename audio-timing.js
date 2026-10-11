@@ -1,165 +1,161 @@
 (() => {
   const NativeAudio = window.Audio;
-  const managed = {};
-  let audioUnlocked = false;
-  let festivalPrimed = false;
 
-  const SOURCES = {
-    crow: 'https://f7lymzdc6juzspur.public.blob.vercel-storage.com/campaign/audio/crow/Avarenne_War_Cue_Crow_at_the_Gallows_Gate_128k-er8YtbMXUKkM0bQtXw9kudLSVyQ2uW.mp3',
-    festival: 'https://f7lymzdc6juzspur.public.blob.vercel-storage.com/campaign/audio/festival/Avarenne_Festival_Cue_Medieval_Celtic_Violin_128k-xJA8DzV0kYNCemDHm3gxlmytX2Ld7G.mp3'
-  };
+  const WAR_SRC = 'https://f7lymzdc6juzspur.public.blob.vercel-storage.com/campaign/audio/crow/Avarenne_War_Cue_Crow_at_the_Gallows_Gate_128k-er8YtbMXUKkM0bQtXw9kudLSVyQ2uW.mp3';
+  const FESTIVAL_SRC = 'https://f7lymzdc6juzspur.public.blob.vercel-storage.com/campaign/audio/festival/Avarenne_Festival_Cue_Medieval_Celtic_Violin_128k-xJA8DzV0kYNCemDHm3gxlmytX2Ld7G.mp3';
+
+  const WAR_VOLUME = 0.72;
+  const FESTIVAL_VOLUME = 0.58;
+  const WAR_FADE_MS = 1200;
+  const CROSSFADE_MS = 1500;
+
+  // The old app still creates /api/audio objects and contains legacy cue logic.
+  // Give those calls inert media objects so they cannot interfere with the real
+  // campaign music controller below.
+  function isLegacyCampaignAudio(src = '') {
+    const value = String(src);
+    return value.includes('/api/audio') && (value.includes('track=crow') || value.includes('track=festival'));
+  }
+
+  function makeDummyAudio() {
+    let currentTime = 0;
+    let volume = 0;
+    let preload = 'auto';
+    let loop = false;
+    return {
+      play() { return Promise.resolve(); },
+      pause() {},
+      load() {},
+      get currentTime() { return currentTime; },
+      set currentTime(v) { currentTime = Number(v) || 0; },
+      get volume() { return volume; },
+      set volume(v) { volume = Math.max(0, Math.min(1, Number(v) || 0)); },
+      get preload() { return preload; },
+      set preload(v) { preload = v; },
+      get loop() { return loop; },
+      set loop(v) { loop = !!v; },
+      get paused() { return false; },
+      get ended() { return false; },
+      get readyState() { return 4; }
+    };
+  }
+
+  function CampaignAudioShim(src) {
+    if (isLegacyCampaignAudio(src)) return makeDummyAudio();
+    return new NativeAudio(src);
+  }
+  CampaignAudioShim.prototype = NativeAudio.prototype;
+  window.Audio = CampaignAudioShim;
+
+  // These are the only two real audio elements used by the page.
+  const war = new NativeAudio(WAR_SRC);
+  const festival = new NativeAudio(FESTIVAL_SRC);
+  war.preload = 'auto';
+  festival.preload = 'auto';
+  festival.loop = true;
+  war.volume = 0;
+  festival.volume = 0;
+  festival.muted = true;
+
+  let armed = false;
+  let warStarted = false;
+  let festivalStarted = false;
+  let fadeToken = 0;
 
   const preludeActive = () => document.getElementById('scene-prelude')?.classList.contains('active');
   const pressingActive = () => document.getElementById('scene-firstpressing')?.classList.contains('active');
 
-  function keyFromSrc(src='') {
-    if (String(src).includes('track=crow')) return 'crow';
-    if (String(src).includes('track=festival')) return 'festival';
-    return null;
+  function playQuietly(audio) {
+    const p = audio.play();
+    if (p?.catch) p.catch(err => console.warn('Campaign audio unlock failed.', err));
   }
 
-  function ManagedAudio(src) {
-    const key = keyFromSrc(src);
-    if (!key) return new NativeAudio(src);
+  function armRealAudio() {
+    if (armed) return;
+    armed = true;
 
-    const real = new NativeAudio(SOURCES[key]);
-    real.preload = 'auto';
-    real.volume = 0;
+    try { war.currentTime = 0; } catch {}
+    try { festival.currentTime = 0; } catch {}
+    war.volume = 0;
+    festival.volume = 0;
+    festival.muted = true;
 
-    const wrapper = {
-      _real: real,
-      _volume: 0,
-      play() {
-        audioUnlocked = true;
-
-        if (key === 'festival' && !pressingActive()) {
-          // Unlock the festival element during the user's Enter gesture, but keep
-          // it hard-muted and running in the background. Do NOT pause it: some
-          // browsers will block a later restart without another user gesture.
-          if (!festivalPrimed) {
-            festivalPrimed = true;
-            try { real.currentTime = 0; } catch {}
-            real.volume = 0;
-            real.muted = true;
-            const p = real.play();
-            if (p?.catch) p.catch(() => {});
-            return p;
-          }
-          return Promise.resolve();
-        }
-
-        return real.play();
-      },
-      pause() {
-        // Ignore the obsolete last-paragraph Crow shutdown. Crow should remain
-        // alive until the First Pressing handoff actually completes.
-        if (key === 'crow' && !pressingActive()) return;
-        real.pause();
-      },
-      get currentTime() { return real.currentTime; },
-      set currentTime(v) { try { real.currentTime = v; } catch {} },
-      get volume() { return this._volume; },
-      set volume(v) {
-        const value = Math.max(0, Math.min(1, Number(v) || 0));
-        this._volume = value;
-
-        if (key === 'crow') {
-          if (preludeActive() && !pressingActive()) {
-            // Allow the main app's War Looms fade-in, but reject its obsolete
-            // last-paragraph fade-out by never lowering the real volume here.
-            real.volume = Math.max(real.volume, value);
-          } else if (!preludeActive() && !pressingActive()) {
-            real.volume = value;
-          }
-          return;
-        }
-
-        if (key === 'festival') {
-          // Before First Pressing the real track may be running, but it must be
-          // completely inaudible regardless of what the old app tries to do.
-          if (!pressingActive()) {
-            real.volume = 0;
-            real.muted = true;
-            return;
-          }
-          real.volume = value;
-        }
-      },
-      get preload() { return real.preload; },
-      set preload(v) { real.preload = v; },
-      get loop() { return real.loop; },
-      set loop(v) { real.loop = !!v; },
-      get paused() { return real.paused; },
-      get ended() { return real.ended; },
-      get readyState() { return real.readyState; },
-      load() { return real.load(); }
-    };
-
-    managed[key] = wrapper;
-    return wrapper;
+    // Both elements begin during the user's explicit Enter click. They remain
+    // inaudible until their scene cues, so later scene changes do not depend on
+    // a new autoplay permission.
+    playQuietly(war);
+    playQuietly(festival);
   }
 
-  window.Audio = ManagedAudio;
-  window.__avarenneManagedAudio = managed;
-
-  const FESTIVAL_VOLUME = 0.58;
-  const CROSSFADE_MS = 1500;
-  let festivalStarted = false;
-  let fadeToken = 0;
-
-  function crossfadeToFestival() {
-    if (!audioUnlocked || festivalStarted || !managed.festival || !pressingActive()) return;
-    festivalStarted = true;
-
-    const war = managed.crow?._real;
-    const festival = managed.festival._real;
+  function startWar() {
+    if (!armed || warStarted || festivalStarted) return;
+    warStarted = true;
     const token = ++fadeToken;
 
-    // The festival element should already be playing silently from the Enter
-    // gesture. Rewind it while it is live, then unmute and bring it in.
+    try { war.currentTime = 0; } catch {}
+    war.muted = false;
+    war.volume = 0;
+    if (war.paused) playQuietly(war);
+
+    const started = performance.now();
+    const tick = now => {
+      if (token !== fadeToken || festivalStarted) return;
+      const x = Math.min(1, (now - started) / WAR_FADE_MS);
+      war.volume = WAR_VOLUME * x;
+      if (x < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function startFestivalTransition() {
+    if (!armed || festivalStarted) return;
+    festivalStarted = true;
+    const token = ++fadeToken;
+
+    const startingWarVolume = war.volume;
     try { festival.currentTime = 0; } catch {}
     festival.volume = 0;
     festival.muted = false;
+    if (festival.paused) playQuietly(festival);
 
-    // Defensive fallback for browsers that suspended the silent element anyway.
-    if (festival.paused) {
-      const p = festival.play();
-      if (p?.catch) p.catch(() => {});
-    }
-
-    const startingWarVolume = war ? war.volume : 0;
     const started = performance.now();
     const tick = now => {
       if (token !== fadeToken) return;
       const x = Math.min(1, (now - started) / CROSSFADE_MS);
-      if (war) war.volume = startingWarVolume * Math.cos(x * Math.PI / 2);
+      war.volume = startingWarVolume * Math.cos(x * Math.PI / 2);
       festival.volume = FESTIVAL_VOLUME * Math.sin(x * Math.PI / 2);
+
       if (x < 1) {
         requestAnimationFrame(tick);
       } else {
-        if (war) {
-          war.volume = 0;
-          war.pause();
-        }
-        festival.volume = FESTIVAL_VOLUME;
+        war.volume = 0;
+        war.pause();
       }
     };
     requestAnimationFrame(tick);
   }
 
-  const pressingScene = document.getElementById('scene-firstpressing');
-  if (pressingScene) {
-    const pressingObserver = new MutationObserver(() => {
-      if (pressingScene.classList.contains('active')) crossfadeToFestival();
-    });
-    pressingObserver.observe(pressingScene, { attributes: true, attributeFilter: ['class'] });
+  function syncToScene() {
+    if (!armed) return;
+    if (pressingActive()) {
+      startFestivalTransition();
+      return;
+    }
+    if (preludeActive()) startWar();
   }
 
-  // Fail-safe in case the class change and observer callback land in an awkward
-  // ordering. Still scene-driven, not timestamp-driven.
-  function watchForFirstPressing() {
-    if (!festivalStarted && pressingActive()) crossfadeToFestival();
-    if (!festivalStarted) requestAnimationFrame(watchForFirstPressing);
-  }
-  requestAnimationFrame(watchForFirstPressing);
+  // Capture the user's Enter click before app.js handles it, guaranteeing that
+  // the two real media elements are unlocked by the user gesture itself.
+  document.addEventListener('click', event => {
+    if (event.target.closest?.('.avarenne-entry-button')) {
+      armRealAudio();
+      requestAnimationFrame(syncToScene);
+    }
+  }, true);
+
+  const preludeScene = document.getElementById('scene-prelude');
+  const pressingScene = document.getElementById('scene-firstpressing');
+  const observer = new MutationObserver(syncToScene);
+  if (preludeScene) observer.observe(preludeScene, { attributes: true, attributeFilter: ['class'] });
+  if (pressingScene) observer.observe(pressingScene, { attributes: true, attributeFilter: ['class'] });
 })();
