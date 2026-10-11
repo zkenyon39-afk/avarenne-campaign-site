@@ -2,6 +2,7 @@
   const NativeAudio = window.Audio;
   const managed = {};
   let audioUnlocked = false;
+  let festivalPrimed = false;
 
   const SOURCES = {
     crow: 'https://f7lymzdc6juzspur.public.blob.vercel-storage.com/campaign/audio/crow/Avarenne_War_Cue_Crow_at_the_Gallows_Gate_128k-er8YtbMXUKkM0bQtXw9kudLSVyQ2uW.mp3',
@@ -30,8 +31,31 @@
       _volume: 0,
       play() {
         audioUnlocked = true;
-        const p = real.play();
-        return p;
+
+        if (key === 'festival' && !pressingActive()) {
+          // Prime this media element exactly once during the user's Enter click,
+          // then stop and rewind it. Subsequent obsolete app play() calls before
+          // First Pressing are ignored completely.
+          if (!festivalPrimed) {
+            festivalPrimed = true;
+            real.volume = 0;
+            const p = real.play();
+            if (p?.then) {
+              p.then(() => {
+                real.pause();
+                try { real.currentTime = 0; } catch {}
+                real.volume = 0;
+              }).catch(() => {});
+            } else {
+              real.pause();
+              try { real.currentTime = 0; } catch {}
+            }
+            return p;
+          }
+          return Promise.resolve();
+        }
+
+        return real.play();
       },
       pause() {
         // The old app transition fires on the last War Looms paragraph. Keep
@@ -58,8 +82,8 @@
         }
 
         if (key === 'festival') {
-          // Ignore the main app's obsolete last-paragraph festival fade.
-          // The actual festival cue is owned by crossfadeToFestival below.
+          // No festival audio is allowed before First Pressing. Once that scene
+          // is active, crossfadeToFestival owns the real element directly.
           real.volume = pressingActive() ? value : 0;
         }
       },
@@ -99,7 +123,8 @@
     const festival = managed.festival._real;
     const token = ++fadeToken;
 
-    // Always begin the festival track at its literal beginning.
+    // Always begin the festival track at the literal beginning.
+    festival.pause();
     try { festival.currentTime = 0; } catch {}
     festival.volume = 0;
     ensurePlaying(festival);
@@ -117,7 +142,6 @@
     requestAnimationFrame(tick);
   }
 
-  // Primary event-driven cue.
   const pressingScene = document.getElementById('scene-firstpressing');
   if (pressingScene) {
     const pressingObserver = new MutationObserver(() => {
@@ -126,9 +150,6 @@
     pressingObserver.observe(pressingScene, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // Fail-safe: do not depend on one MutationObserver callback. This checks the
-  // actual scene state every animation frame until the festival handoff occurs.
-  // Paragraph timing can change freely because this only cares which scene is active.
   function watchForFirstPressing() {
     if (!festivalStarted && pressingActive()) crossfadeToFestival();
     if (!festivalStarted) requestAnimationFrame(watchForFirstPressing);
