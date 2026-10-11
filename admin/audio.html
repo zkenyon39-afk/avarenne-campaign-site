@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Avarenne · Campaign Audio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 110%,#2a0f08 0,#100907 28%,#070707 66%,#030303 100%);color:#ded4c5;font-family:"Cormorant Garamond",Georgia,serif;display:grid;place-items:center;padding:28px}.card{width:min(760px,100%);border:1px solid rgba(205,168,117,.2);background:rgba(10,9,8,.9);box-shadow:0 30px 90px rgba(0,0,0,.55);padding:32px}.kicker,.label{font-family:Cinzel,Georgia,serif;letter-spacing:.18em;text-transform:uppercase}.kicker{font-size:11px;color:#9d8870}.title{font-family:Cinzel,Georgia,serif;font-size:32px;font-weight:500;letter-spacing:.08em;margin:8px 0 8px}.intro{color:#aa9f91;font-size:17px;margin:0 0 26px}.track{border-top:1px solid rgba(255,255,255,.08);padding:24px 0}.track:last-of-type{border-bottom:1px solid rgba(255,255,255,.08)}.label{font-size:11px;color:#c5a77d;margin-bottom:7px}.track h2{margin:0 0 6px;font-weight:500;font-size:24px}.track p{margin:0 0 14px;color:#968b7e}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}input[type=file]{max-width:100%;color:#b7aa9a}.button,.back{font-family:Cinzel,Georgia,serif;letter-spacing:.08em;text-transform:uppercase;font-size:11px;border:1px solid rgba(205,168,117,.34);background:#17120f;color:#ddc9ad;padding:11px 15px;cursor:pointer;text-decoration:none}.button:hover,.back:hover{background:#211812}.button:disabled{opacity:.45;cursor:default}.status{font-size:14px;min-height:20px;margin-top:10px;color:#9d9184}.status.ready{color:#abc49b}.status.error{color:#d69083}.footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:24px;flex-wrap:wrap}.hint{font-size:13px;color:#756d64;max-width:470px}.spinner{display:inline-block;width:10px;height:10px;border:1px solid #8f765b;border-top-color:transparent;border-radius:50%;animation:spin .75s linear infinite;margin-right:7px}@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<main class="card">
+<div class="kicker">Avarenne Admin</div>
+<div class="title">Campaign Audio</div>
+<p class="intro">Upload the two approved music tracks once. They are stored with the campaign and served directly to the public opening sequence.</p>
+<section class="track">
+<div class="label">Northern war cue</div>
+<h2>Crow at the Gallows Gate</h2>
+<p>Begins with “War Looms in the North” and fades into the festival cue on the final prelude paragraph.</p>
+<div class="row"><input id="crowFile" type="file" accept="audio/mpeg,audio/mp4,.mp3,.m4a"><button class="button" id="crowUpload">Upload War Music</button></div>
+<div class="status" id="crowStatus">Checking…</div>
+</section>
+<section class="track">
+<div class="label">Briarwick festival cue</div>
+<h2>Medieval Celtic Violin</h2>
+<p>Fades in from its opening phrase as the story turns south toward Briarwick and The First Pressing.</p>
+<div class="row"><input id="festivalFile" type="file" accept="audio/mpeg,audio/mp4,.mp3,.m4a"><button class="button" id="festivalUpload">Upload Festival Music</button></div>
+<div class="status" id="festivalStatus">Checking…</div>
+</section>
+<div class="footer"><a class="back" href="/">← Back to Editor</a><div class="hint">Uploading a replacement automatically makes the newest file the active cue. No separate publish step is needed.</div></div>
+</main>
+<script type="module">
+import { upload } from 'https://esm.sh/@vercel/blob@2/client';
+const $=id=>document.getElementById(id);
+function setStatus(track,text,kind=''){const el=$(track+'Status');el.className='status '+kind;el.innerHTML=text}
+async function refresh(){
+  try{
+    const r=await fetch('/api/audio-status',{cache:'no-store'});const data=await r.json();if(!r.ok)throw new Error(data.error||'Status unavailable');
+    for(const track of ['crow','festival']){
+      const info=data[track];
+      if(info?.ready){const when=info.uploadedAt?new Date(info.uploadedAt).toLocaleString():'';setStatus(track,`Ready${when?' · uploaded '+when:''}`,'ready')}
+      else setStatus(track,'Not uploaded yet');
+    }
+  }catch(e){for(const track of ['crow','festival'])setStatus(track,e.message||'Could not check status','error')}
+}
+async function send(track){
+  const input=$(track+'File'),button=$(track+'Upload'),file=input.files?.[0];
+  if(!file){setStatus(track,'Choose an MP3 or M4A file first.','error');return}
+  button.disabled=true;setStatus(track,'<span class="spinner"></span>Uploading…');
+  try{
+    const safe=file.name.replace(/[^a-zA-Z0-9._-]+/g,'-');
+    await upload(`campaign/audio/${track}/${safe}`,file,{access:'public',handleUploadUrl:'/api/audio-upload',clientPayload:track,multipart:file.size>4*1024*1024});
+    setStatus(track,'Upload complete · this cue is now active.','ready');
+    await refresh();
+  }catch(e){console.error(e);setStatus(track,e?.message||'Upload failed','error')}
+  finally{button.disabled=false}
+}
+$('crowUpload').addEventListener('click',()=>send('crow'));
+$('festivalUpload').addEventListener('click',()=>send('festival'));
+refresh();
+</script>
+</body>
+</html>
