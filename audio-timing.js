@@ -7,7 +7,9 @@
   const WAR_VOLUME = 0.72;
   const FESTIVAL_VOLUME = 0.58;
   const WAR_FADE_SEC = 1.2;
-  const CROSSFADE_SEC = 1.5;
+  const WAR_OUT_SEC = 2.2;
+  const TRANSITION_PAUSE_SEC = 0.45;
+  const FESTIVAL_IN_SEC = 2.2;
 
   // app.js still creates its old /api/audio media objects. Make only those
   // objects inert; the real soundtrack below is handled entirely by Web Audio.
@@ -117,25 +119,30 @@
     if (festivalStarted || !pressingActive()) return;
     festivalStarted = true;
 
+    const now = ctx.currentTime;
+    const festivalStart = now + WAR_OUT_SEC + TRANSITION_PAUSE_SEC;
+
+    // Let the darker cue actually leave the room before the festival arrives.
+    // This deliberately creates a brief breath of silence between the scenes.
+    if (warGain) {
+      warGain.gain.cancelScheduledValues(now);
+      warGain.gain.setValueAtTime(WAR_VOLUME, now);
+      warGain.gain.linearRampToValueAtTime(0.0001, now + WAR_OUT_SEC);
+      if (warSource) {
+        try { warSource.stop(now + WAR_OUT_SEC + 0.05); } catch {}
+      }
+    }
+
+    // Start the festival track from its literal beginning only after the pause,
+    // then let it arrive gradually rather than colliding with the war cue.
     const node = makeSource(festival, 0);
     festivalSource = node.source;
     festivalGain = node.gain;
-    festivalSource.start(0, 0);
-
-    const now = ctx.currentTime;
     festivalGain.gain.cancelScheduledValues(now);
     festivalGain.gain.setValueAtTime(0, now);
-    festivalGain.gain.linearRampToValueAtTime(FESTIVAL_VOLUME, now + CROSSFADE_SEC);
-
-    if (warGain) {
-      const current = Math.max(0.0001, warGain.gain.value || WAR_VOLUME);
-      warGain.gain.cancelScheduledValues(now);
-      warGain.gain.setValueAtTime(current, now);
-      warGain.gain.linearRampToValueAtTime(0.0001, now + CROSSFADE_SEC);
-      if (warSource) {
-        try { warSource.stop(now + CROSSFADE_SEC + 0.05); } catch {}
-      }
-    }
+    festivalGain.gain.setValueAtTime(0, festivalStart);
+    festivalGain.gain.linearRampToValueAtTime(FESTIVAL_VOLUME, festivalStart + FESTIVAL_IN_SEC);
+    festivalSource.start(festivalStart, 0);
   }
 
   function syncToScene() {
