@@ -18,7 +18,6 @@
     const key = keyFromSrc(src);
     if (!key) return new NativeAudio(src);
 
-    // Use the campaign Blob URLs directly so playback does not wait on an API redirect.
     const real = new NativeAudio(SOURCES[key]);
     real.preload = 'auto';
     real.volume = 0;
@@ -27,16 +26,12 @@
       _real: real,
       _volume: 0,
       play() {
-        // This is called inside the Enter Avarenne click. Keep both files silently
-        // playing so later cue changes do not require a second autoplay permission.
         audioUnlocked = true;
         real.volume = 0;
         const p = real.play();
         return p;
       },
-      pause() {
-        // The reveal-synced controller below owns the actual stop timing.
-      },
+      pause() {},
       get currentTime() { return real.currentTime; },
       set currentTime(v) { try { real.currentTime = v; } catch {} },
       get volume() { return this._volume; },
@@ -78,8 +73,6 @@
     const real = managed.crow._real;
     const token = ++fadeToken;
 
-    // The file has already been primed silently by the Enter click. Rewind it
-    // exactly when the War Looms scene becomes active so the cue starts at 0:00.
     try { real.currentTime = 0; } catch {}
     real.volume = 0;
     ensurePlaying(real);
@@ -102,7 +95,6 @@
     const festival = managed.festival._real;
     const token = ++fadeToken;
 
-    // Always restart the festival cue from its literal beginning.
     try { festival.currentTime = 0; } catch {}
     festival.volume = 0;
     ensurePlaying(festival);
@@ -124,15 +116,6 @@
     requestAnimationFrame(tick);
   }
 
-  function inspectPreludeLine(line) {
-    if (!line?.classList?.contains('visible')) return;
-    const holder = line.parentElement;
-    if (!holder || holder.id !== 'preludeLines') return;
-    const lines = [...holder.querySelectorAll('.teaser-line')];
-    if (lines.indexOf(line) === lines.length - 1) crossfadeToFestival();
-  }
-
-  // Start Crow when the War Looms page itself appears, not when the body copy arrives.
   const preludeScene = document.getElementById('scene-prelude');
   if (preludeScene) {
     const sceneObserver = new MutationObserver(() => {
@@ -141,14 +124,13 @@
     sceneObserver.observe(preludeScene, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // Start the tighter handoff when the final "But in the lands to the south..." paragraph fades in.
-  const holder = document.getElementById('preludeLines');
-  if (holder) {
-    const lineObserver = new MutationObserver(mutations => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'class') inspectPreludeLine(mutation.target);
-      }
+  // Keep Crow playing for the entire War Looms page. The music handoff now
+  // follows the actual scene change, so paragraph timing can be edited freely.
+  const pressingScene = document.getElementById('scene-firstpressing');
+  if (pressingScene) {
+    const pressingObserver = new MutationObserver(() => {
+      if (pressingScene.classList.contains('active')) crossfadeToFestival();
     });
-    lineObserver.observe(holder, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    pressingObserver.observe(pressingScene, { attributes: true, attributeFilter: ['class'] });
   }
 })();
