@@ -35,6 +35,8 @@ const fallback={
   "countdownLabel": "The festival begins",
   "targetDate": "2026-10-18T19:00",
   "lineDelay": 5,
+  "preludeLineDelay": 5,
+  "pressingLineDelay": 3.5,
   "emberCount": 190,
   "smokeAmount": 58,
   "titleHold": 5,
@@ -42,7 +44,13 @@ const fallback={
   "currentScene": "title"
 };
 const allowed=new Set(Object.keys(fallback));
-function clean(input={}){const out={...fallback};for(const [k,v] of Object.entries(input||{}))if(allowed.has(k))out[k]=v;out.currentScene='title';return out}
+function clean(input={}){
+  const out={...fallback};
+  for(const [k,v] of Object.entries(input||{}))if(allowed.has(k))out[k]=v;
+  if(input&&input.lineDelay!==undefined&&input.preludeLineDelay===undefined)out.preludeLineDelay=input.lineDelay;
+  out.currentScene='title';
+  return out;
+}
 async function latest(){const result=await list({prefix:'campaign/settings',limit:100,token:process.env.BLOB_READ_WRITE_TOKEN});const blobs=[...(result.blobs||[])].sort((a,b)=>new Date(b.uploadedAt)-new Date(a.uploadedAt));if(!blobs.length)return null;const r=await fetch(blobs[0].url,{cache:'no-store'});if(!r.ok)return null;return await r.json()}
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store, max-age=0');
