@@ -9,9 +9,9 @@
   const WAR_FADE_MS = 1200;
   const CROSSFADE_MS = 1500;
 
-  // The old app still creates /api/audio objects and contains legacy cue logic.
-  // Give those calls inert media objects so they cannot interfere with the real
-  // campaign music controller below.
+  // app.js still contains its original audio code. Replace only those legacy
+  // /api/audio objects with harmless dummies so there is exactly one system
+  // controlling the real music.
   function isLegacyCampaignAudio(src = '') {
     const value = String(src);
     return value.includes('/api/audio') && (value.includes('track=crow') || value.includes('track=festival'));
@@ -47,15 +47,28 @@
   CampaignAudioShim.prototype = NativeAudio.prototype;
   window.Audio = CampaignAudioShim;
 
-  // These are the only two real audio elements used by the page.
-  const war = new NativeAudio(WAR_SRC);
-  const festival = new NativeAudio(FESTIVAL_SRC);
+  // Use real DOM media elements. They are started once by the explicit Enter
+  // click and then remain playing silently until their scene cue. No later
+  // play() call is required, so browser autoplay rules cannot block the handoff.
+  const war = document.createElement('audio');
+  const festival = document.createElement('audio');
+  war.id = 'avarenne-war-audio';
+  festival.id = 'avarenne-festival-audio';
+  war.src = WAR_SRC;
+  festival.src = FESTIVAL_SRC;
   war.preload = 'auto';
   festival.preload = 'auto';
   festival.loop = true;
   war.volume = 0;
   festival.volume = 0;
+  war.muted = true;
   festival.muted = true;
+  war.setAttribute('playsinline', '');
+  festival.setAttribute('playsinline', '');
+  war.style.display = 'none';
+  festival.style.display = 'none';
+  document.body.appendChild(war);
+  document.body.appendChild(festival);
 
   let armed = false;
   let warStarted = false;
@@ -65,11 +78,6 @@
   const preludeActive = () => document.getElementById('scene-prelude')?.classList.contains('active');
   const pressingActive = () => document.getElementById('scene-firstpressing')?.classList.contains('active');
 
-  function playQuietly(audio) {
-    const p = audio.play();
-    if (p?.catch) p.catch(err => console.warn('Campaign audio unlock failed.', err));
-  }
-
   function armRealAudio() {
     if (armed) return;
     armed = true;
@@ -78,13 +86,13 @@
     try { festival.currentTime = 0; } catch {}
     war.volume = 0;
     festival.volume = 0;
+    war.muted = true;
     festival.muted = true;
 
-    // Both elements begin during the user's explicit Enter click. They remain
-    // inaudible until their scene cues, so later scene changes do not depend on
-    // a new autoplay permission.
-    playQuietly(war);
-    playQuietly(festival);
+    const wp = war.play();
+    if (wp?.catch) wp.catch(err => console.warn('War audio unlock failed.', err));
+    const fp = festival.play();
+    if (fp?.catch) fp.catch(err => console.warn('Festival audio unlock failed.', err));
   }
 
   function startWar() {
@@ -93,9 +101,8 @@
     const token = ++fadeToken;
 
     try { war.currentTime = 0; } catch {}
-    war.muted = false;
     war.volume = 0;
-    if (war.paused) playQuietly(war);
+    war.muted = false;
 
     const started = performance.now();
     const tick = now => {
@@ -111,12 +118,13 @@
     if (!armed || festivalStarted) return;
     festivalStarted = true;
     const token = ++fadeToken;
-
     const startingWarVolume = war.volume;
+
+    // Festival has already been playing muted since Enter. Rewind it while it
+    // is still running, then unmute at zero volume for the crossfade.
     try { festival.currentTime = 0; } catch {}
     festival.volume = 0;
     festival.muted = false;
-    if (festival.paused) playQuietly(festival);
 
     const started = performance.now();
     const tick = now => {
@@ -124,11 +132,11 @@
       const x = Math.min(1, (now - started) / CROSSFADE_MS);
       war.volume = startingWarVolume * Math.cos(x * Math.PI / 2);
       festival.volume = FESTIVAL_VOLUME * Math.sin(x * Math.PI / 2);
-
       if (x < 1) {
         requestAnimationFrame(tick);
       } else {
         war.volume = 0;
+        war.muted = true;
         war.pause();
       }
     };
@@ -139,23 +147,21 @@
     if (!armed) return;
     if (pressingActive()) {
       startFestivalTransition();
-      return;
+    } else if (preludeActive()) {
+      startWar();
     }
-    if (preludeActive()) startWar();
   }
 
-  // Capture the user's Enter click before app.js handles it, guaranteeing that
-  // the two real media elements are unlocked by the user gesture itself.
+  // Capture the same user gesture used by the site's Enter button.
   document.addEventListener('click', event => {
-    if (event.target.closest?.('.avarenne-entry-button')) {
-      armRealAudio();
-      requestAnimationFrame(syncToScene);
-    }
+    if (!event.target.closest?.('.avarenne-entry-button')) return;
+    armRealAudio();
+    requestAnimationFrame(syncToScene);
   }, true);
 
+  const observer = new MutationObserver(syncToScene);
   const preludeScene = document.getElementById('scene-prelude');
   const pressingScene = document.getElementById('scene-firstpressing');
-  const observer = new MutationObserver(syncToScene);
   if (preludeScene) observer.observe(preludeScene, { attributes: true, attributeFilter: ['class'] });
   if (pressingScene) observer.observe(pressingScene, { attributes: true, attributeFilter: ['class'] });
 })();
