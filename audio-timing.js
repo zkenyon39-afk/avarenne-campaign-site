@@ -33,23 +33,16 @@
         audioUnlocked = true;
 
         if (key === 'festival' && !pressingActive()) {
-          // Prime this media element exactly once during the user's Enter click,
-          // then stop and rewind it. Subsequent obsolete app play() calls before
-          // First Pressing are ignored completely.
+          // Unlock the festival element during the user's Enter gesture, but keep
+          // it hard-muted and running in the background. Do NOT pause it: some
+          // browsers will block a later restart without another user gesture.
           if (!festivalPrimed) {
             festivalPrimed = true;
+            try { real.currentTime = 0; } catch {}
             real.volume = 0;
+            real.muted = true;
             const p = real.play();
-            if (p?.then) {
-              p.then(() => {
-                real.pause();
-                try { real.currentTime = 0; } catch {}
-                real.volume = 0;
-              }).catch(() => {});
-            } else {
-              real.pause();
-              try { real.currentTime = 0; } catch {}
-            }
+            if (p?.catch) p.catch(() => {});
             return p;
           }
           return Promise.resolve();
@@ -58,8 +51,8 @@
         return real.play();
       },
       pause() {
-        // The old app transition fires on the last War Looms paragraph. Keep
-        // Crow alive until First Pressing actually appears.
+        // Ignore the obsolete last-paragraph Crow shutdown. Crow should remain
+        // alive until the First Pressing handoff actually completes.
         if (key === 'crow' && !pressingActive()) return;
         real.pause();
       },
@@ -72,8 +65,8 @@
 
         if (key === 'crow') {
           if (preludeActive() && !pressingActive()) {
-            // Allow the main app's War Looms fade-in, but ignore the obsolete
-            // last-paragraph fade-out. Crow stays audible for the whole scene.
+            // Allow the main app's War Looms fade-in, but reject its obsolete
+            // last-paragraph fade-out by never lowering the real volume here.
             real.volume = Math.max(real.volume, value);
           } else if (!preludeActive() && !pressingActive()) {
             real.volume = value;
@@ -82,9 +75,14 @@
         }
 
         if (key === 'festival') {
-          // No festival audio is allowed before First Pressing. Once that scene
-          // is active, crossfadeToFestival owns the real element directly.
-          real.volume = pressingActive() ? value : 0;
+          // Before First Pressing the real track may be running, but it must be
+          // completely inaudible regardless of what the old app tries to do.
+          if (!pressingActive()) {
+            real.volume = 0;
+            real.muted = true;
+            return;
+          }
+          real.volume = value;
         }
       },
       get preload() { return real.preload; },
@@ -109,12 +107,6 @@
   let festivalStarted = false;
   let fadeToken = 0;
 
-  function ensurePlaying(real) {
-    if (!real || !real.paused) return;
-    const p = real.play();
-    if (p?.catch) p.catch(() => {});
-  }
-
   function crossfadeToFestival() {
     if (!audioUnlocked || festivalStarted || !managed.festival || !pressingActive()) return;
     festivalStarted = true;
@@ -123,11 +115,17 @@
     const festival = managed.festival._real;
     const token = ++fadeToken;
 
-    // Always begin the festival track at the literal beginning.
-    festival.pause();
+    // The festival element should already be playing silently from the Enter
+    // gesture. Rewind it while it is live, then unmute and bring it in.
     try { festival.currentTime = 0; } catch {}
     festival.volume = 0;
-    ensurePlaying(festival);
+    festival.muted = false;
+
+    // Defensive fallback for browsers that suspended the silent element anyway.
+    if (festival.paused) {
+      const p = festival.play();
+      if (p?.catch) p.catch(() => {});
+    }
 
     const startingWarVolume = war ? war.volume : 0;
     const started = performance.now();
@@ -136,8 +134,15 @@
       const x = Math.min(1, (now - started) / CROSSFADE_MS);
       if (war) war.volume = startingWarVolume * Math.cos(x * Math.PI / 2);
       festival.volume = FESTIVAL_VOLUME * Math.sin(x * Math.PI / 2);
-      if (x < 1) requestAnimationFrame(tick);
-      else if (war) { war.volume = 0; war.pause(); }
+      if (x < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        if (war) {
+          war.volume = 0;
+          war.pause();
+        }
+        festival.volume = FESTIVAL_VOLUME;
+      }
     };
     requestAnimationFrame(tick);
   }
@@ -150,6 +155,8 @@
     pressingObserver.observe(pressingScene, { attributes: true, attributeFilter: ['class'] });
   }
 
+  // Fail-safe in case the class change and observer callback land in an awkward
+  // ordering. Still scene-driven, not timestamp-driven.
   function watchForFirstPressing() {
     if (!festivalStarted && pressingActive()) crossfadeToFestival();
     if (!festivalStarted) requestAnimationFrame(watchForFirstPressing);
