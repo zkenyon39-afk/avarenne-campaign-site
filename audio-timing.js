@@ -29,6 +29,17 @@
         audioUnlocked = true;
         real.volume = 0;
         const p = real.play();
+
+        // The app calls play() for Crow again at the exact moment it enters the
+        // War Looms scene. Use that call as a reliable second cue in addition
+        // to the scene MutationObserver below. The initial Enter click happens
+        // while the title scene is active, so it remains silent.
+        if (key === 'crow') {
+          requestAnimationFrame(() => {
+            const prelude = document.getElementById('scene-prelude');
+            if (prelude?.classList.contains('active')) startWarWithTitle();
+          });
+        }
         return p;
       },
       pause() {},
@@ -99,7 +110,9 @@
     festival.volume = 0;
     ensurePlaying(festival);
 
-    const startingWarVolume = war ? Math.max(0, Math.min(WAR_VOLUME, war.volume || WAR_VOLUME)) : 0;
+    // Never manufacture a war volume here. If Crow failed to start, this
+    // transition should not suddenly make it audible for the first time.
+    const startingWarVolume = war ? Math.max(0, Math.min(WAR_VOLUME, war.volume)) : 0;
     const started = performance.now();
     const tick = now => {
       if (token !== fadeToken) return;
@@ -116,6 +129,7 @@
     requestAnimationFrame(tick);
   }
 
+  // Primary scene cue: start Crow as soon as War Looms becomes active.
   const preludeScene = document.getElementById('scene-prelude');
   if (preludeScene) {
     const sceneObserver = new MutationObserver(() => {
@@ -124,8 +138,8 @@
     sceneObserver.observe(preludeScene, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // Keep Crow playing for the entire War Looms page. The music handoff now
-  // follows the actual scene change, so paragraph timing can be edited freely.
+  // Keep Crow playing for the entire War Looms page. The music handoff follows
+  // the actual First Pressing scene change, so paragraph timing can be edited freely.
   const pressingScene = document.getElementById('scene-firstpressing');
   if (pressingScene) {
     const pressingObserver = new MutationObserver(() => {
