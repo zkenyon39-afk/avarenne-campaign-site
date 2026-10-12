@@ -105,6 +105,16 @@
   async function armAudio() {
     if (armed) return;
     armed = true;
+
+    // On supported iOS/Safari versions, opt into a playback audio session so
+    // the campaign soundtrack behaves like media and remains audible when the
+    // Ring/Silent switch is enabled. Older browsers simply ignore this path.
+    try {
+      if (navigator.audioSession && 'type' in navigator.audioSession) {
+        navigator.audioSession.type = 'playback';
+      }
+    } catch {}
+
     ctx = new AudioContextCtor();
     try { await ctx.resume(); } catch {}
     loadBuffers().then(syncToScene).catch(err => console.warn('Campaign soundtrack failed to load.', err));
